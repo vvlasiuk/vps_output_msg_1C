@@ -24,7 +24,6 @@ class AppConfig:
     onec_user: str
     onec_password: str
     onec_connector_prog_id: str
-    onec_task_name: str
     poll_interval_sec: float
     task_timeout_sec: float
     loop_sleep_sec: float
