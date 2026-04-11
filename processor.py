@@ -41,9 +41,7 @@ class Processor:
                 return
             incoming = self._parse_incoming(payload)
 
-            command_name = "ЗАЛИШКИТОВАРА"    
-
-            task_id, storage = self._onec.create_task(command_name, incoming.params)
+            task_id, storage = self._onec.create_task(incoming.command_name, incoming.params)
 
             self._tasks.append(
                 TaskRecord(
@@ -65,6 +63,8 @@ class Processor:
                 error=str(exc),
             )
             self._safe_publish(outgoing)
+            # Prevent tight error loop when Rabbit/1C is temporarily unavailable.
+            time.sleep(1.0)
 
     def _poll_tasks(self) -> None:
         if not self._tasks:
@@ -91,7 +91,7 @@ class Processor:
                 continue
 
             try:
-                is_done, status, error = self._onec.get_task_state(item.task_id)
+                is_done, status, error = self._onec.get_task_state(item.task_id, item.storage)
             except Exception as exc:
                 self._logger.error("Failed to poll task %s: %s", item.task_id, exc, exc_info=True)
                 outgoing = OutgoingMessage(
@@ -124,9 +124,9 @@ class Processor:
     def _parse_incoming(payload: dict[str, Any]) -> IncomingMessage:
         message_id = str(payload.get("message_id") or uuid4())
 
-        article = payload.get("article") or payload.get("Артикул")
-        if not article:
-            raise ValueError("Missing required field: article")
+        command_name = str(payload.get("command_name") or "").strip()
+        if not command_name:
+            raise ValueError("Missing required field: command_name")
 
         params = payload.get("params")
         if params is None:
@@ -134,11 +134,17 @@ class Processor:
         if not isinstance(params, dict):
             raise ValueError("Field 'params' must be an object")
 
-        # Always keep article inside 1C structure.
-        if "Артикул" not in params:
-            params["Артикул"] = article
+        normalized_params: dict[str, Any] = {}
+        for raw_key, value in params.items():
+            key = str(raw_key).strip()
+            if not key:
+                continue
+            normalized_params[key] = value
 
-        return IncomingMessage(message_id=message_id, article=str(article), params=params)
+        if not normalized_params:
+            raise ValueError("Field 'params' must contain at least one key-value pair")
+
+        return IncomingMessage(message_id=message_id, command_name=command_name, params=normalized_params)
 
     def _safe_publish(self, outgoing: OutgoingMessage) -> None:
         try:

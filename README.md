@@ -6,9 +6,9 @@ Minimal Windows Python bridge between RabbitMQ and 1C COM.
 
 1. Reads JSON messages from `output_1c.queue`.
 2. Acknowledges message immediately after read.
-3. Creates 1C task using `VPS.CreateTask("ЗАЛИШКИТОВАРА", Структура)`.
+3. Creates 1C task using `VPS.CreateTask(command_name, Структура)`.
 4. Stores `TaskID` and `Storage` in process memory.
-5. Polls task status through `ФоновыеЗадания.НайтиПоУникальномуИдентификатору(TaskID)`.
+5. Polls task status through `VPS.StatusTask(TaskID, Storage)`.
 6. Sends final result with `OK` or `ERROR` to `input.queue`.
 
 ## Install
@@ -30,14 +30,29 @@ If `--log-path` is not provided, service writes to project folder using `LOG_FIL
 
 See `.env.example` for all settings.
 
+For result publishing, configure exchange and routing key:
+
+```env
+RABBITMQ_RESULT_EXCHANGE=input.events
+RABBITMQ_RESULT_ROUTING_KEY=input.queue
+```
+
+`RABBITMQ_RESULT_EXCHANGE` is required.
+
+Required input fields:
+
+1. `command_name`
+2. `params`
+3. `params` must contain at least one key-value pair that will be forwarded to 1C as-is
+
 ## Input message example
 
 ```json
 {
   "message_id": "8e6da4f7-6c8b-4e51-86ac-395dc1fa0f5c",
-  "article": "YT-47160",
+  "command_name": "ЗАЛИШКИТОВАРА",
   "params": {
-    "Склад": "Основний"
+    "article": "YT-47160"
   }
 }
 ```

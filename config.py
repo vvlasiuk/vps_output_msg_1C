@@ -16,6 +16,8 @@ class AppConfig:
     rabbitmq_vhost: str
     rabbitmq_source_queue: str
     rabbitmq_result_queue: str
+    rabbitmq_result_exchange: str
+    rabbitmq_result_routing_key: str
     rabbitmq_heartbeat: int
     onec_server: str
     onec_ref: str
@@ -66,13 +68,14 @@ def load_config(env_path: str | None, log_path_override: str | None) -> AppConfi
         rabbitmq_vhost=os.getenv("RABBITMQ_VHOST", "/"),
         rabbitmq_source_queue=os.getenv("RABBITMQ_SOURCE_QUEUE", "output_1c.queue"),
         rabbitmq_result_queue=os.getenv("RABBITMQ_RESULT_QUEUE", "input.queue"),
+        rabbitmq_result_exchange=_required("RABBITMQ_RESULT_EXCHANGE"),
+        rabbitmq_result_routing_key=os.getenv("RABBITMQ_RESULT_ROUTING_KEY", os.getenv("RABBITMQ_RESULT_QUEUE", "input.queue")),
         rabbitmq_heartbeat=_int("RABBITMQ_HEARTBEAT", 60),
         onec_server=_required("ONEC_SERVER"),
         onec_ref=_required("ONEC_REF"),
         onec_user=_required("ONEC_USER"),
         onec_password=_required("ONEC_PASSWORD"),
         onec_connector_prog_id=os.getenv("ONEC_CONNECTOR_PROG_ID", "V83.COMConnector"),
-        onec_task_name=os.getenv("ONEC_TASK_NAME", "ЗАЛИШКИТОВАРА"),
         poll_interval_sec=_float("POLL_INTERVAL_SEC", 2.0),
         task_timeout_sec=_float("TASK_TIMEOUT_SEC", 300.0),
         loop_sleep_sec=_float("LOOP_SLEEP_SEC", 0.2),

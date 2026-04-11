@@ -7,7 +7,7 @@ from typing import Any
 @dataclass
 class IncomingMessage:
     message_id: str
-    article: str
+    command_name: str
     params: dict[str, Any] = field(default_factory=dict)
 
 
