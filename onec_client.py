@@ -18,7 +18,7 @@ class OneCClient:
     def connect(self) -> None:
         pythoncom.CoInitialize()
         self._inited = True
-
+        #123
         #connector = win32com.client.Dispatch(self._cfg.onec_connector_prog_id)
         #conn_str = (
         #    f"Srvr={self._cfg.onec_server};"
