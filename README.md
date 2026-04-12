@@ -45,12 +45,21 @@ Required input fields:
 2. `params`
 3. `params` must contain at least one key-value pair that will be forwarded to 1C as-is
 
+Optional input tags:
+
+1. `source`
+2. `destination` (or legacy `destanation`)
+
+If present, these tags are propagated to the output message.
+
 ## Input message example
 
 ```json
 {
   "message_id": "8e6da4f7-6c8b-4e51-86ac-395dc1fa0f5c",
   "command_name": "ЗАЛИШКИТОВАРА",
+  "source": "crm",
+  "destination": "1c",
   "params": {
     "article": "YT-47160"
   }
@@ -65,6 +74,8 @@ Required input fields:
   "task_id": "0f4aa6b6-9ebd-11ee-8f3b-00155d010300",
   "storage": "StorageA",
   "status": "OK",
-  "error": null
+  "error": null,
+  "source": "crm",
+  "destination": "1c"
 }
 ```

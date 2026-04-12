@@ -35,6 +35,7 @@ class Processor:
 
     def _try_consume_and_create_task(self) -> None:
         payload: dict[str, Any] | None = None
+        incoming: IncomingMessage | None = None
         try:
             payload = self._rabbit.get_one_and_ack_early()
             if payload is None:
@@ -50,17 +51,32 @@ class Processor:
                     storage=storage,
                     started_monotonic=time.monotonic(),
                     next_poll_monotonic=time.monotonic(),
+                    source=incoming.source,
+                    destination=incoming.destination,
                 )
             )
         except Exception as exc:
             self._logger.error("Failed to create 1C task: %s", exc, exc_info=True)
             fallback_message_id = str(payload.get("message_id", "")) if payload is not None else str(uuid4())
+            source = incoming.source if incoming is not None else None
+            destination = incoming.destination if incoming is not None else None
+
+            if payload is not None:
+                if source is None:
+                    raw_source = payload.get("source")
+                    source = None if raw_source is None else str(raw_source).strip() or None
+                if destination is None:
+                    raw_destination = payload.get("destination", payload.get("destanation"))
+                    destination = None if raw_destination is None else str(raw_destination).strip() or None
+
             outgoing = OutgoingMessage(
                 message_id=fallback_message_id,
                 task_id=None,
                 storage=None,
                 status="ERROR",
                 error=str(exc),
+                source=source,
+                destination=destination,
             )
             self._safe_publish(outgoing)
             # Prevent tight error loop when Rabbit/1C is temporarily unavailable.
@@ -82,6 +98,8 @@ class Processor:
                     storage=item.storage,
                     status="ERROR",
                     error="Task status timeout",
+                    source=item.source,
+                    destination=item.destination,
                 )
                 self._safe_publish(outgoing)
                 continue
@@ -100,6 +118,8 @@ class Processor:
                     storage=item.storage,
                     status="ERROR",
                     error=str(exc),
+                    source=item.source,
+                    destination=item.destination,
                 )
                 self._safe_publish(outgoing)
                 continue
@@ -115,6 +135,8 @@ class Processor:
                 storage=item.storage,
                 status=status,
                 error=error,
+                source=item.source,
+                destination=item.destination,
             )
             self._safe_publish(outgoing)
 
@@ -144,7 +166,19 @@ class Processor:
         if not normalized_params:
             raise ValueError("Field 'params' must contain at least one key-value pair")
 
-        return IncomingMessage(message_id=message_id, command_name=command_name, params=normalized_params)
+        source = payload.get("source")
+        destination = payload.get("destination", payload.get("destanation"))
+
+        source = None if source is None else str(source).strip() or None
+        destination = None if destination is None else str(destination).strip() or None
+
+        return IncomingMessage(
+            message_id=message_id,
+            command_name=command_name,
+            params=normalized_params,
+            source=source,
+            destination=destination,
+        )
 
     def _safe_publish(self, outgoing: OutgoingMessage) -> None:
         try:
