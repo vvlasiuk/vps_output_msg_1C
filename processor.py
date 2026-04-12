@@ -49,31 +49,27 @@ class Processor:
                     message_id=incoming.message_id,
                     task_id=task_id,
                     storage=storage,
+                    command_name=incoming.command_name,
                     started_monotonic=time.monotonic(),
                     next_poll_monotonic=time.monotonic(),
+                    params=incoming.params,
                     source=incoming.source,
                     destination=incoming.destination,
                 )
             )
         except Exception as exc:
             self._logger.error("Failed to create 1C task: %s", exc, exc_info=True)
-            fallback_message_id = str(payload.get("message_id", "")) if payload is not None else str(uuid4())
             source = incoming.source if incoming is not None else None
             destination = incoming.destination if incoming is not None else None
 
             if payload is not None:
                 if source is None:
-                    raw_source = payload.get("source")
-                    source = None if raw_source is None else str(raw_source).strip() or None
+                    source = Processor._normalize_route_tag(payload.get("source"))
                 if destination is None:
                     raw_destination = payload.get("destination", payload.get("destanation"))
-                    destination = None if raw_destination is None else str(raw_destination).strip() or None
+                    destination = Processor._normalize_route_tag(raw_destination)
 
             outgoing = OutgoingMessage(
-                message_id=fallback_message_id,
-                task_id=None,
-                storage=None,
-                status="ERROR",
                 error=str(exc),
                 source=source,
                 destination=destination,
@@ -93,10 +89,6 @@ class Processor:
             elapsed = now - item.started_monotonic
             if elapsed > self._cfg.task_timeout_sec:
                 outgoing = OutgoingMessage(
-                    message_id=item.message_id,
-                    task_id=item.task_id,
-                    storage=item.storage,
-                    status="ERROR",
                     error="Task status timeout",
                     source=item.source,
                     destination=item.destination,
@@ -109,14 +101,10 @@ class Processor:
                 continue
 
             try:
-                is_done, status, error = self._onec.get_task_state(item.task_id, item.storage)
+                is_done, error, command, data = self._onec.get_task_state(item.task_id, item.storage)
             except Exception as exc:
                 self._logger.error("Failed to poll task %s: %s", item.task_id, exc, exc_info=True)
                 outgoing = OutgoingMessage(
-                    message_id=item.message_id,
-                    task_id=item.task_id,
-                    storage=item.storage,
-                    status="ERROR",
                     error=str(exc),
                     source=item.source,
                     destination=item.destination,
@@ -129,11 +117,15 @@ class Processor:
                 remaining.append(item)
                 continue
 
+            if command is None:
+                command = {
+                    "name": item.command_name,
+                    "params": item.params,
+                }
+
             outgoing = OutgoingMessage(
-                message_id=item.message_id,
-                task_id=item.task_id,
-                storage=item.storage,
-                status=status,
+                command=command,
+                DATA=data,
                 error=error,
                 source=item.source,
                 destination=item.destination,
@@ -144,13 +136,21 @@ class Processor:
 
     @staticmethod
     def _parse_incoming(payload: dict[str, Any]) -> IncomingMessage:
-        message_id = str(payload.get("message_id") or uuid4())
+        message_id = Processor._extract_message_id(payload)
 
-        command_name = str(payload.get("command_name") or "").strip()
+        command = payload.get("command")
+        raw_command_name = payload.get("command_name")
+        raw_params = payload.get("params")
+
+        if isinstance(command, dict):
+            raw_command_name = command.get("name", raw_command_name)
+            raw_params = command.get("params", raw_params)
+
+        command_name = str(raw_command_name or "").strip()
         if not command_name:
             raise ValueError("Missing required field: command_name")
 
-        params = payload.get("params")
+        params = raw_params
         if params is None:
             params = {}
         if not isinstance(params, dict):
@@ -166,11 +166,10 @@ class Processor:
         if not normalized_params:
             raise ValueError("Field 'params' must contain at least one key-value pair")
 
-        source = payload.get("source")
-        destination = payload.get("destination", payload.get("destanation"))
-
-        source = None if source is None else str(source).strip() or None
-        destination = None if destination is None else str(destination).strip() or None
+        source = Processor._normalize_route_tag(payload.get("source"))
+        destination = Processor._normalize_route_tag(
+            payload.get("destination", payload.get("destanation"))
+        )
 
         return IncomingMessage(
             message_id=message_id,
@@ -180,8 +179,46 @@ class Processor:
             destination=destination,
         )
 
+    @staticmethod
+    def _extract_message_id(payload: dict[str, Any] | None) -> str:
+        if payload is None:
+            return str(uuid4())
+
+        raw_message_id = payload.get("message_id")
+        if raw_message_id is None:
+            source = payload.get("source")
+            if isinstance(source, dict):
+                raw_message_id = source.get("message_id")
+
+        if raw_message_id is None:
+            return str(uuid4())
+
+        message_id = str(raw_message_id).strip()
+        return message_id or str(uuid4())
+
+    @staticmethod
+    def _normalize_route_tag(value: Any) -> Any | None:
+        if value is None:
+            return None
+
+        if isinstance(value, dict):
+            normalized: dict[str, Any] = {}
+            for raw_key, item_value in value.items():
+                key = str(raw_key).strip()
+                if not key:
+                    continue
+                normalized[key] = item_value
+            return normalized or None
+
+        if isinstance(value, str):
+            normalized_text = value.strip()
+            return normalized_text or None
+
+        return value
+
     def _safe_publish(self, outgoing: OutgoingMessage) -> None:
         try:
-            self._rabbit.publish_result(asdict(outgoing))
+            payload = {k: v for k, v in asdict(outgoing).items() if v is not None}
+            self._rabbit.publish_result(payload)
         except Exception as exc:
             self._logger.error("Failed to publish result: %s", exc, exc_info=True)

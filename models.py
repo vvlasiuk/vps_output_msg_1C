@@ -9,8 +9,8 @@ class IncomingMessage:
     message_id: str
     command_name: str
     params: dict[str, Any] = field(default_factory=dict)
-    source: str | None = None
-    destination: str | None = None
+    source: Any | None = None
+    destination: Any | None = None
 
 
 @dataclass
@@ -18,18 +18,18 @@ class TaskRecord:
     message_id: str
     task_id: str
     storage: str
+    command_name: str
     started_monotonic: float
     next_poll_monotonic: float
-    source: str | None = None
-    destination: str | None = None
+    params: dict[str, Any] = field(default_factory=dict)
+    source: Any | None = None
+    destination: Any | None = None
 
 
 @dataclass
 class OutgoingMessage:
-    message_id: str
-    task_id: str | None
-    storage: str | None
-    status: str
-    error: str | None
-    source: str | None = None
-    destination: str | None = None
+    command: dict[str, Any] | None = None
+    DATA: Any | None = None
+    error: str | None = None
+    source: Any | None = None
+    destination: Any | None = None

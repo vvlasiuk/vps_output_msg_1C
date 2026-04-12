@@ -52,11 +52,41 @@ class OneCClient:
             self._insert_to_structure(structure, key, value)
 
         task = self._session.VPS.CreateTask(task_name, structure)
+
+        raw_status = None
+        raw_error = None
+
+        if isinstance(task, dict):
+            raw_status = task.get("status")
+            raw_error = task.get("text_error") or task.get("error")
+        else:
+            for attr in ("status", "Status", "Статус"):
+                try:
+                    raw_status = getattr(task, attr)
+                    break
+                except Exception:
+                    pass
+            for attr in ("text_error", "TextError", "ТекстОшибки", "error", "Error"):
+                try:
+                    raw_error = getattr(task, attr)
+                    break
+                except Exception:
+                    pass
+
+        if raw_status is not None:
+            status_value = str(raw_status).strip().upper()
+            if status_value not in {"OK", "SUCCESS", "TRUE", "1"}:
+                raise RuntimeError(str(raw_error or "1C CreateTask error"))
+
         task_id = str(task.TaskID)
         storage = str(task.Storage)
         return task_id, storage
 
-    def get_task_state(self, task_id: str, storage: str) -> tuple[bool, str, str | None]:
+    def get_task_state(
+        self,
+        task_id: str,
+        storage: str,
+    ) -> tuple[bool, str | None, dict[str, Any] | None, Any | None]:
         if self._session is None:
             raise RuntimeError("1C session is not connected")
 
@@ -83,24 +113,27 @@ class OneCClient:
                 status_value = str(parsed.get("status", "")).upper()
                 error_value = parsed.get("error")
                 if status_value == "OK":
-                    return True, "OK", None
+                    command_value = parsed.get("command")
+                    command_payload = command_value if isinstance(command_value, dict) else None
+                    data_value = parsed.get("DATA", parsed.get("data"))
+                    return True, None, command_payload, data_value
                 if status_value == "ERROR":
-                    return True, "ERROR", str(error_value or "1C task error")
+                    return True, str(error_value or "1C task error"), None, None
                 if status_value == "RUN":
-                    return False, "", None
+                    return False, None, None, None
 
         if isinstance(status_result, bool):
-            return (True, "OK", None) if status_result else (False, "", None)
+            return (True, None, None, None) if status_result else (False, None, None, None)
 
         raw_status = str(status_result)
         normalized = raw_status.upper()
 
         if normalized in {"TRUE", "1", "OK", "DONE", "FINISHED", "SUCCESS"}:
-            return True, "OK", None
+            return True, None, None, None
         if normalized in {"FALSE", "0", "PENDING", "INPROGRESS", "IN_PROGRESS", "RUNNING"}:
-            return False, "", None
+            return False, None, None, None
         if "ОШИБ" in normalized or "ERROR" in normalized or "FAIL" in normalized:
-            return True, "ERROR", raw_status or "1C task error"
+            return True, raw_status or "1C task error", None, None
 
         # Fallback for object-like statuses returned by 1C.
         for attr in ("Status", "Статус", "State", "Состояние"):
@@ -111,8 +144,8 @@ class OneCClient:
 
             state = attr_value.upper()
             if "ОШИБ" in state or "ERROR" in state or "FAIL" in state:
-                return True, "ERROR", attr_value or "1C task error"
+                return True, attr_value or "1C task error", None, None
             if "OK" in state or "DONE" in state or "ЗАВЕРШ" in state:
-                return True, "OK", None
+                return True, None, None, None
 
-        return False, "", None
+        return False, None, None, None

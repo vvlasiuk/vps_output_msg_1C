@@ -9,7 +9,7 @@ Minimal Windows Python bridge between RabbitMQ and 1C COM.
 3. Creates 1C task using `VPS.CreateTask(command_name, Структура)`.
 4. Stores `TaskID` and `Storage` in process memory.
 5. Polls task status through `VPS.StatusTask(TaskID, Storage)`.
-6. Sends final result with `OK` or `ERROR` to `input.queue`.
+6. Sends final result to `input.queue` without `status` field.
 
 ## Install
 
@@ -41,8 +41,8 @@ RABBITMQ_RESULT_ROUTING_KEY=input.queue
 
 Required input fields:
 
-1. `command_name`
-2. `params`
+1. `command_name` + `params` (flat format), or
+2. `command.name` + `command.params` (nested format), and
 3. `params` must contain at least one key-value pair that will be forwarded to 1C as-is
 
 Optional input tags:
@@ -50,7 +50,7 @@ Optional input tags:
 1. `source`
 2. `destination` (or legacy `destanation`)
 
-If present, these tags are propagated to the output message.
+If present, these tags are propagated to the output message (string or object).
 
 ## Input message example
 
@@ -66,15 +66,62 @@ If present, these tags are propagated to the output message.
 }
 ```
 
-## Output message example
+## Input message example (Telegram-style)
 
 ```json
 {
-  "message_id": "8e6da4f7-6c8b-4e51-86ac-395dc1fa0f5c",
-  "task_id": "0f4aa6b6-9ebd-11ee-8f3b-00155d010300",
-  "storage": "StorageA",
-  "status": "OK",
-  "error": null,
+  "source": {
+    "system": "telegram",
+    "source_id": "vlsv_bot",
+    "chat_id": "1011471535",
+    "user_id": "1011471535",
+    "username": "vlsv00",
+    "message_id": "1770",
+    "timestamp": "2026-04-12T15:45:46+02:00",
+    "group_id": null
+  },
+  "destination": {
+    "system": "telegram",
+    "chat_id": "1011471535"
+  },
+  "command": {
+    "name": "ЗАЛИШКИТОВАРА",
+    "params": {
+      "article": "SBG100"
+    }
+  }
+}
+```
+
+## Output message example (success)
+
+```json
+{
+  "command": {
+    "name": "ЗАЛИШКИТОВАРА",
+    "params": {
+      "article": "SBG100"
+    }
+  },
+  "DATA": {
+    "items": []
+  },
+  "source": "crm",
+  "destination": "1c"
+}
+```
+
+## Output message example (error)
+
+```json
+{
+  "command": {
+    "name": "ЗАЛИШКИТОВАРА",
+    "params": {
+      "article": "SBG100"
+    }
+  },
+  "error": "1C task error",
   "source": "crm",
   "destination": "1c"
 }
