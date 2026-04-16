@@ -17,3 +17,5 @@ logs/
 # IDE
 .vscode/
 .idea/
+
+run.bat
