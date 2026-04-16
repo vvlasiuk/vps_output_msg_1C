@@ -116,6 +116,10 @@ class OneCClient:
                     command_value = parsed.get("command")
                     command_payload = command_value if isinstance(command_value, dict) else None
                     data_value = parsed.get("DATA", parsed.get("data"))
+                    if isinstance(data_value, list) and len(data_value) == 1 and isinstance(data_value[0], dict):
+                        data_value = data_value[0]
+                    elif not isinstance(data_value, dict):
+                        data_value = {}
                     return True, None, command_payload, data_value
                 if status_value == "ERROR":
                     return True, str(error_value or "1C task error"), None, None
