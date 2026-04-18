@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 
 @dataclass(frozen=True)
 class AppConfig:
-        onec_reconnect_interval_sec: float
+    onec_reconnect_interval_sec: float
     rabbitmq_host: str
     rabbitmq_port: int
     rabbitmq_user: str
