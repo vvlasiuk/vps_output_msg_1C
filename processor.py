@@ -119,8 +119,8 @@ class Processor:
 
             if command is None:
                 command = {
-                    "name": item.command_name,
-                    "params": item.params,
+                    "name": command,
+                    "params": "",
                 }
 
             outgoing = OutgoingMessage(

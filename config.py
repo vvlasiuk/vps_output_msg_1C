@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 @dataclass(frozen=True)
 class AppConfig:
+        onec_reconnect_interval_sec: float
     rabbitmq_host: str
     rabbitmq_port: int
     rabbitmq_user: str
@@ -82,4 +83,5 @@ def load_config(env_path: str | None, log_path_override: str | None) -> AppConfi
         log_max_bytes=_int("LOG_MAX_BYTES", 1_048_576),
         log_backup_count=_int("LOG_BACKUP_COUNT", 5),
         log_file=log_file,
+        onec_reconnect_interval_sec=_float("ONEC_RECONNECT_INTERVAL_SEC", 60.0),
     )

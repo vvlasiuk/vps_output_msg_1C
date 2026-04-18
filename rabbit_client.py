@@ -112,3 +112,22 @@ class RabbitClient:
                     delivery_mode=2,
                 ),
             )
+
+
+def send_sys_error(message: str) -> None:
+    from config import load_config
+
+    cfg = load_config(None, None)
+    client = RabbitClient(cfg)
+    client.connect()
+    payload = {
+        "type": "1c",
+        "text": message,
+    }
+    client._channel.basic_publish(
+        exchange="",
+        routing_key="sys_error.queue",
+        body=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        properties=None,
+    )
+    client.close()

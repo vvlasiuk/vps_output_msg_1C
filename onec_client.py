@@ -10,6 +10,45 @@ from config import AppConfig
 
 
 class OneCClient:
+    def is_alive(self, reconnect: bool = True) -> bool:
+        """
+        Перевіряє активність сесії 1С через метод LifeIs.
+        Якщо сесія неактивна, виконує один реконект.
+        Якщо після реконекту сесія не активна — логування у sys_error.queue.
+        """
+        try:
+            if self._session is None:
+                raise RuntimeError("1C session is not connected")
+            result = self._session.VPS.LifeIs()
+            if isinstance(result, str) and result.strip().lower() == "true":
+                return True
+        except Exception as e:
+            last_error = str(e)
+        else:
+            last_error = f"LifeIs returned: {result}"
+
+        # Якщо потрібно, пробуємо реконект
+        if reconnect:
+            try:
+                self.connect()
+                result = self._session.VPS.LifeIs()
+                if isinstance(result, str) and result.strip().lower() == "true":
+                    return True
+                last_error = f"LifeIs after reconnect: {result}"
+            except Exception as e:
+                last_error = f"Reconnect error: {e}"
+
+        # Логування у sys_error.queue
+        try:
+            from rabbit_client import send_sys_error
+            send_sys_error(f"1C session lost: {last_error}")
+        except Exception:
+            pass
+        # Пауза після невдалого реконекту
+        import time
+        time.sleep(self._cfg.onec_reconnect_interval_sec)
+        return False
+    
     def __init__(self, cfg: AppConfig):
         self._cfg = cfg
         self._session = None
@@ -32,8 +71,8 @@ class OneCClient:
             self._inited = False
 
     def _new_structure(self):
-        if self._session is None:
-            raise RuntimeError("1C session is not connected")
+        if not self.is_alive():
+            raise RuntimeError("1C session is not active")
         return self._session.NewObject("Structure")
 
     @staticmethod
@@ -44,8 +83,8 @@ class OneCClient:
             structure.Вставить(key, value)
 
     def create_task(self, task_name: str, params: dict[str, Any]) -> tuple[str, str]:
-        if self._session is None:
-            raise RuntimeError("1C session is not connected")
+        if not self.is_alive():
+            raise RuntimeError("1C session is not active")
 
         structure = self._new_structure()
         for key, value in params.items():
@@ -53,54 +92,30 @@ class OneCClient:
 
         task = self._session.VPS.CreateTask(task_name, structure)
 
-        raw_status = None
-        raw_error = None
+        if not isinstance(task, str):
+            raise RuntimeError("Очікується відповідь у форматі JSON (str)")
+        task = json.loads(task)
 
-        if isinstance(task, dict):
-            raw_status = task.get("status")
-            raw_error = task.get("text_error") or task.get("error")
-        else:
-            for attr in ("status", "Status", "Статус"):
-                try:
-                    raw_status = getattr(task, attr)
-                    break
-                except Exception:
-                    pass
-            for attr in ("text_error", "TextError", "ТекстОшибки", "error", "Error"):
-                try:
-                    raw_error = getattr(task, attr)
-                    break
-                except Exception:
-                    pass
+        raw_status = task.get("status")
+        raw_error = task.get("text_error")
+        task_id = task.get("TaskID")
+        storage = task.get("Storage")
 
-        if raw_status is not None:
-            status_value = str(raw_status).strip().upper()
-            if status_value not in {"OK", "SUCCESS", "TRUE", "1"}:
-                raise RuntimeError(str(raw_error or "1C CreateTask error"))
+        if str(raw_status).strip().upper() != "OK":
+            raise RuntimeError(str(raw_error or "1C CreateTask error"))
 
-        task_id = str(task.TaskID)
-        storage = str(task.Storage)
         return task_id, storage
+
 
     def get_task_state(
         self,
         task_id: str,
         storage: str,
     ) -> tuple[bool, str | None, dict[str, Any] | None, Any | None]:
-        if self._session is None:
-            raise RuntimeError("1C session is not connected")
+        if not self.is_alive():
+            raise RuntimeError("1C session is not active")
 
         status_result = self._session.VPS.StatusTask(task_id, storage)
-
-        # if isinstance(status_result, dict):
-        #     status_value = str(status_result.get("status", "")).upper()
-        #     error_value = status_result.get("error")
-        #     if status_value == "OK":
-        #         return True, "OK", None
-        #     if status_value == "ERROR":
-        #         return True, "ERROR", str(error_value or "1C task error")
-        #     if status_value == "RUN":
-        #         return False, "", None
 
         if isinstance(status_result, str):
             text = status_result.strip()
@@ -111,18 +126,15 @@ class OneCClient:
 
             if isinstance(parsed, dict):
                 status_value = str(parsed.get("status", "")).upper()
-                error_value = parsed.get("error")
+                error_value = parsed.get("text_errror")
+                command_value = parsed.get("command")
+                # command_payload = command_value if isinstance(command_value, dict) else None
+
                 if status_value == "OK":
-                    command_value = parsed.get("command")
-                    command_payload = command_value if isinstance(command_value, dict) else None
                     data_value = parsed.get("DATA", parsed.get("data"))
-                    # if isinstance(data_value, list) and len(data_value) == 1 and isinstance(data_value[0], dict):
-                    #     data_value = data_value[0]
-                    # elif not isinstance(data_value, dict):
-                    #     data_value = {}
-                    return True, None, command_payload, data_value
+                    return True, None, command_value, data_value
                 if status_value == "ERROR":
-                    return True, str(error_value or "1C task error"), None, None
+                    return True, str(error_value or "1C task error"), command_value, None
                 if status_value == "RUN":
                     return False, None, None, None
 
