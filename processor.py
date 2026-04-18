@@ -117,7 +117,7 @@ class Processor:
                 remaining.append(item)
                 continue
 
-            if command is None:
+            if command is not None:
                 command = {
                     "name": command,
                     "params": "",
