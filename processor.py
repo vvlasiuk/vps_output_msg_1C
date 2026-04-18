@@ -120,7 +120,7 @@ class Processor:
             if command is not None:
                 command = {
                     "name": command,
-                    "params": "",
+                    "params": {},
                 }
 
             outgoing = OutgoingMessage(
