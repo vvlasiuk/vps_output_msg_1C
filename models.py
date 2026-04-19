@@ -29,7 +29,7 @@ class TaskRecord:
 @dataclass
 class OutgoingMessage:
     command: dict[str, Any] | None = None
-    DATA: Any | None = None
+    data: Any | None = None
     error: str | None = None
     source: Any | None = None
     destination: Any | None = None

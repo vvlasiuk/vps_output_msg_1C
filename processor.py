@@ -10,7 +10,7 @@ from config import AppConfig
 from models import IncomingMessage, OutgoingMessage, TaskRecord
 from onec_client import OneCClient
 from rabbit_client import RabbitClient
-
+import json
 
 class Processor:
     def __init__(self, cfg: AppConfig, logger: logging.Logger):
@@ -123,9 +123,11 @@ class Processor:
                     "params": {},
                 }
 
+            data = json.loads(data)
+
             outgoing = OutgoingMessage(
                 command=command,
-                DATA=data,
+                data=data,
                 error=error,
                 source=item.source,
                 destination=item.destination,
