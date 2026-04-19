@@ -123,7 +123,10 @@ class Processor:
                     "params": {},
                 }
 
-            data = json.loads(data)
+            if data is None:
+                data = {}
+            else:
+                data = json.loads(data)
 
             outgoing = OutgoingMessage(
                 command=command,
